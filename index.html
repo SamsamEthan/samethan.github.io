@@ -1,72 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Geoweb MQTT App</title>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geoweb MQTT App</title> <!-- Sets the browser tab title -->
+  <meta charset="UTF-8" /> <!-- Defines character encoding -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Makes the page mobile-responsive -->
+
+  <!-- Load MQTT client (Paho) for browser WebSocket use -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+  <!-- Load Leaflet CSS and JS for map display -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+  <!-- Page styling -->
   <style>
-    #map { height: 400px; margin-top: 10px; }
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #log { margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; font-family: monospace; white-space: pre-wrap; }
+    #map { height: 400px; margin-top: 10px; } /* Map height */
+    body { font-family: Arial, sans-serif; padding: 20px; } /* Font and spacing */
+    #log { margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; font-family: monospace; white-space: pre-wrap; } /* MQTT log box */
   </style>
 </head>
 <body>
 
-  <h2>Geoweb MQTT App</h2>
+  <h2>Geoweb MQTT App</h2> <!-- Main page title -->
 
-  <!-- MQTT Settings -->
+  <!-- MQTT configuration inputs -->
   <label>MQTT Broker:</label>
-  <input id="broker" value="test.mosquitto.org" />
+  <input id="broker" value="test.mosquitto.org" /> <!-- Default broker -->
   <label>Port:</label>
-  <input id="port" value="8081" />
-
-  <!-- Topic Input -->
+  <input id="port" value="8081" /> <!-- Default port -->
   <label>Topic:</label>
-  <input id="topic" value="engo551/your_name/my_temperature" />
+  <input id="topic" value="enso465/your_name/my_temperature" /> <!-- Default topic -->
 
-  <!-- Control Buttons -->
+  <!-- MQTT connect and disconnect buttons -->
   <button onclick="connect()">Start</button>
   <button onclick="disconnect()">End</button>
-  <p id="status">Disconnected</p>
+  <p id="status">Disconnected</p> <!-- Connection status display -->
 
-  <!-- Publish -->
+  <!-- Button to send location and temperature data -->
   <button onclick="shareStatus()">Share My Status</button>
 
-  <!-- Leaflet Map -->
+  <!-- Container for Leaflet map -->
   <div id="map"></div>
 
-  <!-- Message Log -->
+  <!-- Message log for displaying received messages -->
   <div id="log">Waiting for MQTT messages...</div>
 
   <script>
-    let client, map, marker, topic;
+    let client, map, marker, topic; // Global variables
 
-    // Initialize map
+    // Initialize Leaflet map centered on Calgary
     map = L.map('map').setView([51.0447, -114.0719], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); // Add OpenStreetMap layer
 
+    // Connect to the MQTT broker
     function connect() {
-      const host = document.getElementById("broker").value;
-      const port = parseInt(document.getElementById("port").value);
-      topic = document.getElementById("topic").value;
+      const host = document.getElementById("broker").value; // Get broker from input
+      const port = parseInt(document.getElementById("port").value); // Get port
+      topic = document.getElementById("topic").value; // Get topic
 
-      client = new Paho.MQTT.Client(host, port, "clientId-" + Math.random());
+      client = new Paho.MQTT.Client(host, port, "clientId-" + Math.random()); // Create new MQTT client
 
+      // Handle lost connections
       client.onConnectionLost = () => {
         document.getElementById("status").innerText = "Connection lost. Reconnecting...";
-        setTimeout(connect, 2000);
+        setTimeout(connect, 2000); // Retry connection
       };
 
+      // Handle incoming messages
       client.onMessageArrived = onMessage;
 
+      // Connect using SSL and subscribe to topic
       client.connect({
         useSSL: true,
         onSuccess: () => {
           document.getElementById("status").innerText = "Connected";
-          client.subscribe(topic);
+          client.subscribe(topic); // Subscribe to the topic
         },
         onFailure: (err) => {
           document.getElementById("status").innerText = "Failed to connect: " + err.errorMessage;
@@ -74,6 +82,7 @@
       });
     }
 
+    // Disconnect from MQTT broker
     function disconnect() {
       if (client && client.isConnected()) {
         client.disconnect();
@@ -81,6 +90,7 @@
       }
     }
 
+    // Share current location and random temperature
     function shareStatus() {
       if (!navigator.geolocation) {
         alert("Geolocation not supported.");
@@ -90,8 +100,9 @@
       navigator.geolocation.getCurrentPosition(pos => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        const temp = Math.floor(Math.random() * 70) - 40;
+        const temp = Math.floor(Math.random() * 70) - 40; // Generate random temperature [-40, 29]
 
+        // Format data as GeoJSON
         const geojson = {
           type: "Feature",
           geometry: {
@@ -103,6 +114,7 @@
           }
         };
 
+        // Create and send MQTT message
         const msg = new Paho.MQTT.Message(JSON.stringify(geojson));
         msg.destinationName = topic;
         client.send(msg);
@@ -110,23 +122,28 @@
       });
     }
 
+    // Handle received MQTT message
     function onMessage(message) {
-      const data = JSON.parse(message.payloadString);
-      const [lon, lat] = data.geometry.coordinates;
-      const temp = data.properties.temperature;
+      const data = JSON.parse(message.payloadString); // Parse JSON
+      const [lon, lat] = data.geometry.coordinates; // Extract coordinates
+      const temp = data.properties.temperature; // Extract temperature
 
+      // Determine color based on temperature
       const color = temp < -10 ? "blue" : temp < 30 ? "green" : "red";
+
+      // Add marker to map
       const icon = L.circleMarker([lat, lon], {
         radius: 10,
         color: color,
         fillOpacity: 0.8
       }).addTo(map);
 
-      icon.bindPopup(`Temperature: ${temp}°C`).openPopup();
+      icon.bindPopup(`Temperature: ${temp}°C`).openPopup(); // Attach popup to marker
 
-      if (marker) map.removeLayer(marker);
-      marker = icon;
+      if (marker) map.removeLayer(marker); // Remove previous marker
+      marker = icon; // Store current marker
 
+      // Show message in log
       document.getElementById("log").innerText = `Received MQTT Message:\n${message.payloadString}`;
     }
   </script>
